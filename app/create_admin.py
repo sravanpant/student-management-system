@@ -1,3 +1,5 @@
+# /backend/app/create_admin.py
+
 from motor.motor_asyncio import AsyncIOMotorClient
 from passlib.context import CryptContext
 import asyncio

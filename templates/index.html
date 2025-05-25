@@ -1,11 +1,17 @@
+<!--  /backend/templates/index.html -->
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Student Marksheet Management System</title>
+  <!-- CSS files -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-1BmE4kWBq78iYhFldvKuhfTAU6auU8tT94WrHftjDbrCEXSU1oBoqyl2QvZ6jIW3" crossorigin="anonymous">
   <link rel="stylesheet" href="{{ url_for('static', path='/css/style.css') }}">
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <!-- JavaScript files -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-ka7Sk0Gln4gmtz2MlQnikT1wXgYsOg+OMhuP+IlRH9sENBO0LRn5q+8nbTov4+1p" crossorigin="anonymous"></script>
 </head>
 <body>
   <div class="container">
@@ -26,56 +32,156 @@
 
     <div id="admin-dashboard" class="dashboard-section" style="display: none;">
       <h2>Admin Dashboard</h2>
-      <div class="row">
-        <div class="col-md-4">
-          <div class="card">
-            <div class="card-body">
-              <h5 class="card-title">Add Student</h5>
-              <form id="add-student-form">
-                <div class="mb-3">
-                  <label for="student-name" class="form-label">Name</label>
-                  <input type="text" class="form-control" id="student-name" required>
+      <ul class="nav nav-tabs mb-4" id="adminTabs" role="tablist">
+        <li class="nav-item">
+          <a class="nav-link active" id="students-tab" data-bs-toggle="tab" href="#students-panel" role="tab">Students</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" id="marks-tab" data-bs-toggle="tab" href="#marks-panel" role="tab">Marks</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" id="reports-tab" data-bs-toggle="tab" href="#reports-panel" role="tab">Reports</a>
+        </li>
+      </ul>
+      
+      <div class="tab-content" id="adminTabContent">
+        <div class="tab-pane fade show active" id="students-panel" role="tabpanel">
+          <div class="row">
+            <div class="col-md-4">
+              <div class="card">
+                <div class="card-body">
+                  <h5 class="card-title">Add/Update Student</h5>
+                  <form id="student-form">
+                    <input type="hidden" id="student-id">
+                    <div class="mb-3">
+                      <label for="student-name" class="form-label">Name</label>
+                      <input type="text" class="form-control" id="student-name" required>
+                    </div>
+                    <div class="mb-3">
+                      <label for="roll-number" class="form-label">Roll Number</label>
+                      <input type="text" class="form-control" id="roll-number" required>
+                    </div>
+                    <div class="mb-3">
+                      <label for="class-name" class="form-label">Class</label>
+                      <input type="text" class="form-control" id="class-name" required>
+                    </div>
+                    <div class="mb-3">
+                      <label for="section" class="form-label">Section</label>
+                      <input type="text" class="form-control" id="section" required>
+                    </div>
+                    <div class="d-grid gap-2">
+                      <button type="submit" class="btn btn-primary">Save Student</button>
+                      <button type="button" class="btn btn-secondary" onclick="resetStudentForm()">Reset</button>
+                    </div>
+                  </form>
                 </div>
-                <div class="mb-3">
-                  <label for="roll-number" class="form-label">Roll Number</label>
-                  <input type="text" class="form-control" id="roll-number" required>
+              </div>
+            </div>
+            <div class="col-md-8">
+              <div class="card">
+                <div class="card-body">
+                  <h5 class="card-title">Students List</h5>
+                  <div class="table-responsive">
+                    <table class="table table-striped" id="students-table">
+                      <thead>
+                        <tr>
+                          <th>Name</th>
+                          <th>Roll Number</th>
+                          <th>Class</th>
+                          <th>Section</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody></tbody>
+                    </table>
+                  </div>
                 </div>
-                <div class="mb-3">
-                  <label for="class-name" class="form-label">Class</label>
-                  <input type="text" class="form-control" id="class-name" required>
-                </div>
-                <div class="mb-3">
-                  <label for="section" class="form-label">Section</label>
-                  <input type="text" class="form-control" id="section" required>
-                </div>
-                <button type="submit" class="btn btn-primary">Add Student</button>
-              </form>
+              </div>
             </div>
           </div>
         </div>
-        <div class="col-md-8">
-          <div class="card">
-            <div class="card-body">
-              <h5 class="card-title">Add Marks</h5>
-              <form id="add-marks-form">
-                <div class="mb-3">
-                  <label for="student-select" class="form-label">Select Student</label>
-                  <select class="form-control" id="student-select" required></select>
+
+        <div class="tab-pane fade" id="marks-panel" role="tabpanel">
+          <div class="row">
+            <div class="col-md-4">
+              <div class="card">
+                <div class="card-body">
+                  <h5 class="card-title">Add/Update Marks</h5>
+                  <form id="marks-form">
+                    <input type="hidden" id="marks-id">
+                    <div class="mb-3">
+                      <label for="marks-student-select" class="form-label">Select Student</label>
+                      <select class="form-control" id="marks-student-select" required></select>
+                    </div>
+                    <div class="mb-3">
+                      <label for="subject" class="form-label">Subject</label>
+                      <input type="text" class="form-control" id="subject" required>
+                    </div>
+                    <div class="mb-3">
+                      <label for="marks" class="form-label">Marks</label>
+                      <input type="number" class="form-control" id="marks" required>
+                    </div>
+                    <div class="mb-3">
+                      <label for="max-marks" class="form-label">Maximum Marks</label>
+                      <input type="number" class="form-control" id="max-marks" required>
+                    </div>
+                    <div class="d-grid gap-2">
+                      <button type="submit" class="btn btn-primary">Save Marks</button>
+                      <button type="button" class="btn btn-secondary" onclick="resetMarksForm()">Reset</button>
+                    </div>
+                  </form>
                 </div>
-                <div class="mb-3">
-                  <label for="subject" class="form-label">Subject</label>
-                  <input type="text" class="form-control" id="subject" required>
+              </div>
+            </div>
+            <div class="col-md-8">
+              <div class="card">
+                <div class="card-body">
+                  <h5 class="card-title">Marks List</h5>
+                  <div class="table-responsive">
+                    <table class="table table-striped" id="marks-table">
+                      <thead>
+                        <tr>
+                          <th>Student</th>
+                          <th>Subject</th>
+                          <th>Marks</th>
+                          <th>Maximum Marks</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody></tbody>
+                    </table>
+                  </div>
                 </div>
-                <div class="mb-3">
-                  <label for="marks" class="form-label">Marks</label>
-                  <input type="number" class="form-control" id="marks" required>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-pane fade" id="reports-panel" role="tabpanel">
+          <div class="row">
+            <div class="col-md-4">
+              <div class="card mb-4">
+                <div class="card-body">
+                  <h5 class="card-title">Class-wise Performance</h5>
+                  <div id="class-performance"></div>
                 </div>
-                <div class="mb-3">
-                  <label for="max-marks" class="form-label">Maximum Marks</label>
-                  <input type="number" class="form-control" id="max-marks" required>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="card mb-4">
+                <div class="card-body">
+                  <h5 class="card-title">Subject-wise Performance</h5>
+                  <div id="subject-performance"></div>
                 </div>
-                <button type="submit" class="btn btn-primary">Add Marks</button>
-              </form>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="card mb-4">
+                <div class="card-body">
+                  <h5 class="card-title">Top Performers</h5>
+                  <div id="top-performers"></div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -110,7 +216,21 @@
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- Application JavaScript -->
   <script src="{{ url_for('static', path='/js/main.js') }}"></script>
+  <script>
+    // Initialize marks tab when loaded
+    document.addEventListener('DOMContentLoaded', function() {
+      const marksTab = document.querySelector('#marks-tab');
+      if (marksTab) {
+        marksTab.addEventListener('shown.bs.tab', function (e) {
+          console.log('Marks tab shown');
+          loadMarks().catch(error => {
+            console.error('Error in loadMarks:', error);
+          });
+        });
+      }
+    });
+  </script>
 </body>
 </html>

@@ -1,3 +1,5 @@
+# /backend/app/create_student_user.py
+
 from motor.motor_asyncio import AsyncIOMotorClient
 from passlib.context import CryptContext
 import asyncio

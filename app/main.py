@@ -1,3 +1,4 @@
+# /backend/app/main.py
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
@@ -158,6 +159,17 @@ async def get_user_details(username: str, current_user: User = Depends(get_curre
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
+@app.get("/marks/by-roll/{roll_number}")
+async def get_student_marks_by_roll(roll_number: str, current_user: User = Depends(get_current_user)):
+    if current_user.role == "student" and current_user.username != roll_number:
+        raise HTTPException(status_code=403, detail="Not authorized to view these marks")
+    
+    marks = await db.marks.find({"student_id": roll_number}).to_list(length=None)
+    # Convert ObjectId to string for each mark
+    for mark in marks:
+        mark["_id"] = str(mark["_id"])
+    return marks
+
 @app.get("/students/", response_model=list[Student])
 async def list_students(current_user: User = Depends(get_current_user)):
     if current_user.role != "admin":
@@ -196,22 +208,178 @@ async def create_student(student: Student, current_user: User = Depends(get_curr
 
 @app.get("/students/{student_id}", response_model=Student)
 async def get_student(student_id: str, current_user: User = Depends(get_current_user)):
-    if current_user.role == "student" and current_user.username != student_id:
-        raise HTTPException(status_code=403, detail="Not authorized to view this student")
-    student = await db.students.find_one({"roll_number": student_id})
+    if not student_id or student_id == "undefined":
+        raise HTTPException(status_code=400, detail="Student ID is required")
+        
+    try:
+        student = None
+        # First try to find by MongoDB ID
+        if len(student_id) == 24:  # Length of MongoDB ObjectId
+            try:
+                student = await db.students.find_one({"_id": ObjectId(student_id)})
+            except:
+                pass
+                
+        # If not found by ObjectId, try by roll number
+        if student is None:
+            student = await db.students.find_one({"roll_number": student_id})
+            
+        if student is None:
+            raise HTTPException(status_code=404, detail="Student not found")
+            
+        # Convert ObjectId to string
+        student["_id"] = str(student["_id"])
+        return student
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"Student not found: {str(e)}")
+    
     if student is None:
         raise HTTPException(status_code=404, detail="Student not found")
+
+    # For students, only allow access to their own record
+    if current_user.role == "student" and current_user.username != student["roll_number"]:
+        raise HTTPException(status_code=403, detail="Not authorized to view this student")
+
     student["_id"] = str(student["_id"])
     return student
+
+@app.get("/test-db")
+async def test_db():
+    result = await db["some_collection"].find_one({})
+    return {"db_connected": result is not None}
+
+@app.put("/students/by-roll/{roll_number}", response_model=Student)
+async def update_student_by_roll(roll_number: str, student: Student, current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized to update students")
+    
+    try:
+        # Verify the student exists first
+        existing_student = await db.students.find_one({"roll_number": roll_number})
+        if not existing_student:
+            raise HTTPException(status_code=404, detail="Student not found")
+        
+        # Update the student data
+        result = await db.students.update_one(
+            {"roll_number": roll_number},
+            {"$set": student.dict()}
+        )
+        
+        if result.modified_count == 0:
+            raise HTTPException(status_code=400, detail="No changes were made")
+        
+        # Return updated student data
+        updated_student = {**student.dict(), "_id": str(existing_student["_id"])}
+        return updated_student
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to update student: {str(e)}")
+
+@app.delete("/students/by-roll/{roll_number}")
+async def delete_student_by_roll(roll_number: str, current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized to delete students")
+    
+    # Find the student first to get their ID
+    student = await db.students.find_one({"roll_number": roll_number})
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    
+    student_id = str(student["_id"])
+    
+    # Delete student's marks first
+    await db.marks.delete_many({"student_id": student_id})
+    
+    # Then delete the student
+    result = await db.students.delete_one({"roll_number": roll_number})
+    
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Student not found")
+    
+    return {"message": "Student and related marks deleted successfully"}
+
+@app.put("/students/{student_id}", response_model=Student)
+async def update_student(student_id: str, student: Student, current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized to update students")
+    
+    try:
+        # Verify the student exists first
+        existing_student = await db.students.find_one({"_id": ObjectId(student_id)})
+        if not existing_student:
+            raise HTTPException(status_code=404, detail="Student not found")
+        
+        # Update the student data
+        result = await db.students.update_one(
+            {"_id": ObjectId(student_id)},
+            {"$set": student.dict()}
+        )
+        
+        if result.modified_count == 0:
+            raise HTTPException(status_code=400, detail="No changes were made")
+        
+        # Return updated student data
+        updated_student = {**student.dict(), "_id": student_id}
+        return updated_student
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to update student: {str(e)}")
+
+@app.delete("/students/{student_id}")
+async def delete_student(student_id: str, current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized to delete students")
+    
+    # Delete student's marks first
+    await db.marks.delete_many({"student_id": student_id})
+    
+    # Then delete the student
+    result = await db.students.delete_one({"_id": ObjectId(student_id)})
+    
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Student not found")
+    
+    return {"message": "Student and related marks deleted successfully"}
 
 @app.post("/marks/", response_model=Marks)
 async def add_marks(marks: Marks, current_user: User = Depends(get_current_user)):
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Not authorized to add marks")
+    
+    # Verify the student exists
+    student = await db.students.find_one({"roll_number": marks.student_id})
+    if not student:
+        raise HTTPException(status_code=404, detail=f"Student with roll number {marks.student_id} not found")
+    
     marks_dict = marks.dict()
     result = await db.marks.insert_one(marks_dict)
     marks_dict["_id"] = str(result.inserted_id)
     return marks_dict
+
+@app.put("/marks/{marks_id}")
+async def update_marks(marks_id: str, marks: Marks, current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized to update marks")
+    
+    result = await db.marks.update_one(
+        {"_id": ObjectId(marks_id)},
+        {"$set": marks.dict()}
+    )
+    
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Marks record not found")
+    
+    return {"message": "Marks updated successfully"}
+
+@app.delete("/marks/{marks_id}")
+async def delete_marks(marks_id: str, current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized to delete marks")
+    
+    result = await db.marks.delete_one({"_id": ObjectId(marks_id)})
+    
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Marks record not found")
+    
+    return {"message": "Marks deleted successfully"}
 
 @app.get("/marks/{student_id}")
 async def get_student_marks(student_id: str, current_user: User = Depends(get_current_user)):
@@ -223,6 +391,218 @@ async def get_student_marks(student_id: str, current_user: User = Depends(get_cu
         mark["_id"] = str(mark["_id"])
     return marks
 
+@app.get("/marks/")
+async def list_marks(current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized to view all marks")
+    
+    pipeline = [
+        {
+            "$lookup": {
+                "from": "students",
+                "localField": "student_id",
+                "foreignField": "roll_number",  # Use roll_number instead of _id
+                "as": "student_info"
+            }
+        },
+        {
+            "$unwind": {
+                "path": "$student_info",
+                "preserveNullAndEmptyArrays": True  # Keep marks even if student not found
+            }
+        },
+        {
+            "$project": {
+                "_id": 1,
+                "student_id": 1,
+                "subject": 1,
+                "marks": 1,
+                "max_marks": 1,
+                "exam_date": 1,
+                "student_name": {"$ifNull": ["$student_info.name", "Unknown Student"]}
+            }
+        }
+    ]
+    
+    marks = await db.marks.aggregate(pipeline).to_list(None)
+    # Convert ObjectId to string
+    for mark in marks:
+        mark["_id"] = str(mark["_id"])
+    return marks
+
+@app.get("/marks/id/{marks_id}")
+async def get_marks_by_id(marks_id: str, current_user: User = Depends(get_current_user)):
+    try:
+        # Convert string ID to ObjectId
+        marks_obj_id = ObjectId(marks_id)
+        marks = await db.marks.find_one({"_id": marks_obj_id})
+        
+        if not marks:
+            raise HTTPException(status_code=404, detail="Marks not found")
+        
+        # Convert ObjectId to string
+        marks["_id"] = str(marks["_id"])
+        
+        # If current user is a student, check authorization
+        if current_user.role == "student":
+            # Get the student record to check if these are the student's marks
+            student = await db.students.find_one({"roll_number": current_user.username})
+            if student and marks["student_id"] != student.roll_number:
+                raise HTTPException(status_code=403, detail="Not authorized to view these marks")
+        
+        return marks
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error retrieving marks: {str(e)}")
+
+@app.get("/reports/class-performance")
+async def get_class_performance(current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized to view reports")
+    
+    try:
+        # First get all students grouped by class
+        pipeline = [
+            {
+                "$group": {
+                    "_id": "$class_name",
+                    "total_students": {"$sum": 1},
+                    "students": {"$push": {"roll_number": "$roll_number", "name": "$name"}}
+                }
+            }
+        ]
+        
+        classes = await db.students.aggregate(pipeline).to_list(None)
+        
+        # Then for each class, get the marks data
+        result = []
+        for class_group in classes:
+            class_name = class_group["_id"]
+            total_students = class_group["total_students"]
+            
+            # Get student roll numbers for this class
+            student_roll_numbers = [s["roll_number"] for s in class_group["students"]]
+            
+            # Calculate average score for these students
+            marks_pipeline = [
+                {
+                    "$match": {
+                        "student_id": {"$in": student_roll_numbers}
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": None,
+                        "average_score": {"$avg": "$marks"},
+                        "pass_count": {
+                            "$sum": {
+                                "$cond": [{"$gte": ["$marks", 40]}, 1, 0]
+                            }
+                        },
+                        "total_entries": {"$sum": 1}
+                    }
+                }
+            ]
+            
+            marks_stats = await db.marks.aggregate(marks_pipeline).to_list(None)
+            
+            # Create result entry
+            class_data = {
+                "_id": class_name,
+                "total_students": total_students,
+                "average_score": 0,
+                "pass_rate": 0
+            }
+            
+            if marks_stats and len(marks_stats) > 0:
+                class_data["average_score"] = marks_stats[0].get("average_score", 0)
+                total_entries = marks_stats[0].get("total_entries", 0)
+                if total_entries > 0:
+                    class_data["pass_rate"] = marks_stats[0].get("pass_count", 0) / total_entries
+            
+            result.append(class_data)
+            
+        return result
+    except Exception as e:
+        print(f"Error in class performance query: {str(e)}")
+        return []
+
+@app.get("/reports/subject-performance")
+async def get_subject_performance(current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized to view reports")
+    
+    pipeline = [
+        {
+            "$group": {
+                "_id": "$subject",
+                "average_score": {"$avg": "$marks"},
+                "highest_score": {"$max": "$marks"},
+                "lowest_score": {"$min": "$marks"},
+                "total_students": {"$sum": 1},
+                "pass_rate": {
+                    "$avg": {
+                        "$cond": [{"$gte": ["$marks", 40]}, 1, 0]
+                    }
+                }
+            }
+        }
+    ]
+    
+    subject_performance = await db.marks.aggregate(pipeline).to_list(None)
+    return subject_performance
+
+@app.get("/reports/top-performers")
+async def get_top_performers(current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized to view reports")
+    
+    pipeline = [
+        {
+            "$lookup": {
+                "from": "students",
+                "localField": "student_id",  # This is roll_number in the marks collection
+                "foreignField": "roll_number",  # Join with roll_number in students collection
+                "as": "student_info"
+            }
+        },
+        {
+            "$unwind": {
+                "path": "$student_info",
+                "preserveNullAndEmptyArrays": False  # Skip entries without matching students
+            }
+        },
+        {
+            "$group": {
+                "_id": "$student_id",
+                "student_name": {"$first": "$student_info.name"},
+                "class_name": {"$first": "$student_info.class_name"},
+                "average_score": {"$avg": "$marks"},
+                "total_marks": {"$sum": "$marks"},
+                "subjects_count": {"$sum": 1}
+            }
+        },
+        {
+            "$match": {
+                "subjects_count": {"$gt": 0}  # Ensure we have at least one subject
+            }
+        },
+        {
+            "$sort": {"average_score": -1}
+        },
+        {
+            "$limit": 10
+        }
+    ]
+    
+    try:
+        top_performers = await db.marks.aggregate(pipeline).to_list(None)
+        print("Top performers query result:", top_performers)  # Debug output
+        return top_performers
+    except Exception as e:
+        print(f"Error in top performers query: {str(e)}")
+        return []
+
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
+    uvicorn.run(app, host="0.0.0.0", port=8000)
